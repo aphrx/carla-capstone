@@ -78,7 +78,7 @@ while True:
 		if (EyeCounter == 70):
 			if not ALARM_ON:
 				ALARM_ON = True
-				t = Thread(target=sound_alarm, args=("Airhorn2.mp3",))
+				t = Thread(target=sound_alarm, args=("alert.mp3",))
 				#start a thread to have the alarm sound played in the background
 				t.deamon = True
 				t.start()
