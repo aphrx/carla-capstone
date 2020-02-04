@@ -155,6 +155,8 @@ speed = 0
 indicator = 0
 delay_counter = 0
 reverse = 0
+bkup = 0
+array3 = None
 
 class World(object):
     def __init__(self, carla_world, hud, actor_filter):
@@ -218,6 +220,7 @@ class World(object):
     def destroy(self):
         actors = [
             self.camera_manager.sensor,
+            self.camera_manager.sensor_bkup,
             self.collision_sensor.sensor,
             self.lane_invasion_sensor.sensor,
             self.player]
@@ -299,6 +302,9 @@ class DualControl(object):
                         self._control.gear = 1
                 elif event.button == 6:
                     world.camera_manager.toggle_camera()
+                elif event.button == 12:
+                    world.destroy()
+                    pygame.quit()
                 elif event.button == 7:
                     if(auto == 1):
                         print("Disable Lane Assist")
@@ -384,7 +390,7 @@ class DualControl(object):
 
         # Custom function to map range of inputs [1, -1] to outputs [0, 1] i.e 1 from inputs means nothing is pressed
         # For the steering, it seems fine as it is
-        K1 = 1.0  # 0.55
+        K1 = 0.65  # 0.55
         steerCmd = K1 * math.tan(1.1 * jsInputs[self._steer_idx])
 
         K2 = 1.6  # 1.6
@@ -758,6 +764,7 @@ class CameraManager(object):
 
     def render(self, display):
         if self.surface is not None:
+            self.surface = pygame.transform.scale(self.surface, (1920, 1080))
             display.blit(self.surface, (0, 0))
 
     def process_img(img):
@@ -767,17 +774,15 @@ class CameraManager(object):
         
     def backup(weak_self, image):
         self = weak_self()
-        #image.convert(self.sensor_bkup)
 
         array = np.frombuffer(image.raw_data, dtype=np.dtype("uint8"))
         array = np.reshape(array, (image.height, image.width, 4))
 
-        array2 = array[:, :, :3]
-        array = array2[:, :, ::-1]
+        array = array[:, :, :3]
         
         cv2.namedWindow("window")
         cv2.moveWindow("window", 1900, 0)
-        cv2.resizeWindow("window", 1024, 768) 
+        cv2.resizeWindow("window", 1920, 1080) 
         cv2.imshow("window", array)
         
         cv2.waitKey(1)
@@ -799,7 +804,7 @@ class CameraManager(object):
         length2 = 0
         m1coords = [[1000, 550], [1000,720]]
         m2coords = [[250, 550], [250,720]]
-
+        
         # Check all the lines that is was able to detect and see which is most a road line
         if lines is not None:
             for line in lines:
@@ -829,63 +834,50 @@ class CameraManager(object):
         self = weak_self()
         if not self:
             return
-        if self.sensors[self.index][0].startswith('sensor.lidar'):
-            points = np.frombuffer(image.raw_data, dtype=np.dtype('f4'))
-            points = np.reshape(points, (int(points.shape[0] / 3), 3))
-            lidar_data = np.array(points[:, :2])
-            lidar_data *= min(self.hud.dim) / 100.0
-            lidar_data += (0.5 * self.hud.dim[0], 0.5 * self.hud.dim[1])
-            lidar_data = np.fabs(lidar_data) # pylint: disable=E1111
-            lidar_data = lidar_data.astype(np.int32)
-            lidar_data = np.reshape(lidar_data, (-1, 2))
-            lidar_img_size = (self.hud.dim[0], self.hud.dim[1], 3)
-            lidar_img = np.zeros(lidar_img_size)
-            lidar_img[tuple(lidar_data.T)] = (255, 255, 255)
-            self.surface = pygame.surfarray.make_surface(lidar_img)
-        else:
-            image.convert(self.sensors[0][1])
+        
+        image.convert(self.sensors[0][1])
 
-            array = np.frombuffer(image.raw_data, dtype=np.dtype("uint8"))
-            array = np.reshape(array, (image.height, image.width, 4))
+        array = np.frombuffer(image.raw_data, dtype=np.dtype("uint8"))
+        array = np.reshape(array, (image.height, image.width, 4))
 
-            array2 = array[:, :, :3]
-            array = array2[:, :, ::-1]
+        array2 = array[:, :, :3]
+        array = array2[:, :, ::-1]
 
-            self.surface = pygame.surfarray.make_surface(array.swapaxes(0, 1))
+        self.surface = pygame.surfarray.make_surface(array.swapaxes(0, 1))
 
-            processed_img = CameraManager.process_img(CameraManager.region_of_interest(CameraManager.process_img(CameraManager.process_img(array2))))
-            
-            lines = cv2.HoughLinesP(processed_img, 2, np.pi/180, 100, np.array([]), minLineLength=100, maxLineGap=80)
+        processed_img = CameraManager.process_img(CameraManager.region_of_interest(CameraManager.process_img(CameraManager.process_img(array2))))
+        
+        lines = cv2.HoughLinesP(processed_img, 2, np.pi/180, 100, np.array([]), minLineLength=100, maxLineGap=80)
 
-            lined_img, m1, m2 = CameraManager.display_lines(processed_img, lines)
+        lined_img, m1, m2 = CameraManager.display_lines(processed_img, lines)
 
-            overlayed_img = cv2.addWeighted(cv2.cvtColor(array2, cv2.COLOR_BGR2GRAY), 0.8, lined_img, 1, 1)
-            cv2.rectangle(overlayed_img,(250,500),(1050,720),(0,255,0),3)
-            pts = np.array([m1, m2], np.int32)
-            pts = pts.reshape((-1,1,2))
-            avgm1 = (m1[0][0] + m1[1][0])/2
-            avgm2 = (m2[0][0] + m2[1][0])/2
+        overlayed_img = cv2.addWeighted(cv2.cvtColor(array2, cv2.COLOR_BGR2GRAY), 0.8, lined_img, 1, 1)
+        cv2.rectangle(overlayed_img,(250,500),(1050,720),(0,255,0),3)
+        pts = np.array([m1, m2], np.int32)
+        pts = pts.reshape((-1,1,2))
+        avgm1 = (m1[0][0] + m1[1][0])/2
+        avgm2 = (m2[0][0] + m2[1][0])/2
 
-            m1dif = avgm1 - 640
-            m2dif = 640 - avgm2
+        m1dif = avgm1 - 640
+        m2dif = 640 - avgm2
 
-            global steer
-            if(m1dif < 210):
-                #print("Steer left!")
-                steer = -0.4
+        global steer
+        if(m1dif < 210):
+            #print("Steer left!")
+            steer = -0.4
 
-            if(m2dif < 210):
-                #print("Steer right!")
-                steer = 0.4
+        if(m2dif < 210):
+            #print("Steer right!")
+            steer = 0.4
 
-            if ((m1dif > 200) and (m2dif > 200)):
-                steer = 0
-            
-            #cv2.polylines(overlayed_img,[pts],True,(0,255,255))
-            cv2.fillPoly(overlayed_img, np.int_([pts]), (0, 255, 0))
+        if ((m1dif > 200) and (m2dif > 200)):
+            steer = 0
+        
+        cv2.polylines(overlayed_img,[pts],True,(0,255,255))
+        cv2.fillPoly(overlayed_img, np.int_([pts]), (0, 255, 0))
 
-            #cv2.imshow('window', overlayed_img)
-            cv2.waitKey(1)
+        #cv2.imshow('window2', array)
+        cv2.waitKey(1)
 
 # ==============================================================================
 # -- game_loop() ---------------------------------------------------------------
@@ -959,7 +951,7 @@ def main():
     argparser.add_argument(
         '--res',
         metavar='WIDTHxHEIGHT',
-        default='1920x1080',
+        default='858x480',
         help='window resolution (default: 1280x720)')
     argparser.add_argument(
         '--filter',
@@ -970,10 +962,7 @@ def main():
 
     args.width, args.height = [int(x) for x in args.res.split('x')]
 
-    log_level = logging.DEBUG if args.debug else logging.INFO
-    logging.basicConfig(format='%(levelname)s: %(message)s', level=log_level)
 
-    logging.info('listening to server %s:%s', args.host, args.port)
 
     #print(__doc__)
 
