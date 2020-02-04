@@ -5,4 +5,5 @@ to meet our needs. For this application to work it requires the sound file, and 
 For this project we are using a logitech webcam with a 720p resoultion. 
 
 To run this application you need to install dlib. <code>pip install dlib</code>
-Start the application: <code>python capture.py</br>
+<br>
+Start the application: <code>python capture.py</code>
