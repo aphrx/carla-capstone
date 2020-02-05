@@ -156,6 +156,7 @@ indicator = 0
 delay_counter = 0
 reverse = 0
 bkup = 0
+bkup_cam=0
 array3 = None
 
 class World(object):
@@ -269,11 +270,11 @@ class DualControl(object):
 
     def parse_events(self, world, clock):
         global auto
+        global bkup_cam
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return True
             elif event.type == pygame.JOYBUTTONDOWN:
-                print(event.button)
                 global indicator
                 if event.button == 4:
                     world.restart()
@@ -315,7 +316,16 @@ class DualControl(object):
                 elif event.button == self._reverse_idx:
                     self._control.gear = 1 if self._control.reverse else -1
                 elif event.button == 3:
-                    world.camera_manager.next_sensor()
+                    if(indicator == 3):
+                        indicator = 0
+                    else:
+                        indicator = 3
+                elif event.button == 1:
+                    if bkup_cam == 0:
+                        bkup_cam = 1
+                    else:
+                        bkup_cam = 0
+                    world.restart()
 
             elif event.type == pygame.KEYUP:
                 if self._is_quit_shortcut(event.key):
@@ -350,9 +360,6 @@ class DualControl(object):
                     elif self._control.manual_gear_shift and event.key == K_PERIOD:
                         self._control.gear = self._control.gear + 1
                     elif event.key == K_p:
-                        #self._autopilot_enabled = not self._autopilot_enabled
-                        #world.player.set_autopilot(self._autopilot_enabled)
-                        #world.hud.notification('Autopilot %s' % ('On' if self._autopilot_enabled else 'Off'))
                         if(auto == 1):
                             print("Disable Lane Assist")
                             auto = 0
@@ -390,10 +397,10 @@ class DualControl(object):
 
         # Custom function to map range of inputs [1, -1] to outputs [0, 1] i.e 1 from inputs means nothing is pressed
         # For the steering, it seems fine as it is
-        K1 = 0.65  # 0.55
+        K1 = 0.35  # 0.55
         steerCmd = K1 * math.tan(1.1 * jsInputs[self._steer_idx])
 
-        K2 = 1.6  # 1.6
+        K2 = 1.4  # 1.6
         throttleCmd = K2 + (2.05 * math.log10(
             -0.7 * jsInputs[self._throttle_idx] + 1.4) - 1.2) / 0.92
         if throttleCmd <= 0:
@@ -752,7 +759,9 @@ class CameraManager(object):
             # circular reference.
             weak_self = weakref.ref(self)
             self.sensor.listen(lambda image: CameraManager._parse_image(weak_self, image))
-            self.sensor_bkup.listen(lambda bkup: CameraManager.backup(weak_self, bkup)) 
+            global bkup_cam
+            if(bkup_cam == 1):
+                self.sensor_bkup.listen(lambda bkup: CameraManager.backup(weak_self, bkup)) 
             
             
         if notify:
@@ -782,28 +791,42 @@ class CameraManager(object):
         
         cv2.namedWindow("window")
         cv2.moveWindow("window", 1900, 0)
-        cv2.resizeWindow("window", 1920, 1080) 
-        cv2.imshow("window", array)
+        cv2.resizeWindow("window", 1920, 1080)
+        array = cv2.resize(array, dsize=(1080, 1080), interpolation=cv2.INTER_CUBIC)        
+        #cv2.imshow("window", array)
         
         cv2.waitKey(1)
 
     def region_of_interest(img):
         height = img.shape[0]
         width = img.shape[1]
-        interest = np.array([[(250, 550),(250, 720), (1050,720), (1050, 550)]])
+        
+        a1 = (int) (0.20 * width)
+        a2 = (int) (0.82 * width)
+        b = (int) (0.76 * height)
+        
+        interest = np.array([[(a1, b),(a1, height), (a2,height), (a2, b)]])
         mask = np.zeros_like(img)
         cv2.fillPoly(mask, interest, 255)
         masked_img = cv2.bitwise_and(img, mask)
         return masked_img
 
     def display_lines(img, lines):
+    
+        height = img.shape[0]
+        width = img.shape[1]
+        
+        a1 = (int) (0.20 * width)
+        a2 = (int) (0.82 * width)
+        b = (int) (0.76 * height)
+        
         line_image = np.zeros_like(img)
-        m1 = 0; ## Right
-        m2 = 0; ## Left
+        m1 = 0.0; ## Right
+        m2 = 0.0; ## Left
         length1 = 0
         length2 = 0
-        m1coords = [[1000, 550], [1000,720]]
-        m2coords = [[250, 550], [250,720]]
+        m1coords = [[a2, b], [a2,height]]
+        m2coords = [[a1, b], [a1,height]]
         
         # Check all the lines that is was able to detect and see which is most a road line
         if lines is not None:
@@ -814,6 +837,7 @@ class CameraManager(object):
                 if (x != 0 and y != 0):
                     m = y/x
                     if(m > m1):
+                        print(m1)
                         m1 = m
                         z = (x*x)+(y*y)
                         #length = math.sqrt(z)
@@ -821,6 +845,7 @@ class CameraManager(object):
                         m1coords[1] = [x2, y2]
                     if(m < m2):
                         m2 = m
+                        
                         z = (x*x)+(y*y)
                         #length = math.sqrt(z)
                         m2coords[0] = [x1, y1]
@@ -852,31 +877,38 @@ class CameraManager(object):
         lined_img, m1, m2 = CameraManager.display_lines(processed_img, lines)
 
         overlayed_img = cv2.addWeighted(cv2.cvtColor(array2, cv2.COLOR_BGR2GRAY), 0.8, lined_img, 1, 1)
-        cv2.rectangle(overlayed_img,(250,500),(1050,720),(0,255,0),3)
+        
+        height = image.height
+        width = image.width
+        
+        a1 = (int) (0.20 * width)
+        a2 = (int) (0.82 * width)
+        b = (int) (0.76 * height)
+        
+        cv2.rectangle(overlayed_img,(a1,b),(a2,height),(0,255,0),3)
         pts = np.array([m1, m2], np.int32)
         pts = pts.reshape((-1,1,2))
         avgm1 = (m1[0][0] + m1[1][0])/2
         avgm2 = (m2[0][0] + m2[1][0])/2
 
-        m1dif = avgm1 - 640
-        m2dif = 640 - avgm2
-
+        m1dif = avgm1 - (width/2)
+        m2dif = (width/2) - avgm2
         global steer
-        if(m1dif < 210):
+        if(m1dif < 100):
             #print("Steer left!")
-            steer = -0.4
+            steer = -0.3
 
-        if(m2dif < 210):
+        if(m2dif < 100):
             #print("Steer right!")
-            steer = 0.4
+            steer = 0.3
 
         if ((m1dif > 200) and (m2dif > 200)):
             steer = 0
         
         cv2.polylines(overlayed_img,[pts],True,(0,255,255))
         cv2.fillPoly(overlayed_img, np.int_([pts]), (0, 255, 0))
-
-        #cv2.imshow('window2', array)
+        cv2.moveWindow("window2", 1900, 0)
+        cv2.imshow('window2', overlayed_img)
         cv2.waitKey(1)
 
 # ==============================================================================
@@ -956,7 +988,7 @@ def main():
     argparser.add_argument(
         '--filter',
         metavar='PATTERN',
-        default='vehicle.*',
+        default='vehicle.audi.*',
         help='actor filter (default: "vehicle.*")')
     args = argparser.parse_args()
 
