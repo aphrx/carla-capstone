@@ -156,7 +156,8 @@ indicator = 0
 delay_counter = 0
 reverse = 0
 bkup = 0
-bkup_cam=0
+drive = 0
+bkup_cam = 1
 array3 = None
 
 class World(object):
@@ -406,6 +407,10 @@ class DualControl(object):
         if throttleCmd <= 0:
             throttleCmd = 0
         elif throttleCmd > 1:
+            global drive
+            drive = drive + 0.0001
+            subprocess.call("adb shell am startservice -a com.lexa.fakegps.START -e lat " + str(43.933028 + drive)  + " -e long " + str(-78.878979 - drive) ,shell=True)
+            throttleCmd = 1
             throttleCmd = 1
         brakeCmd = 1.6 + (2.05 * math.log10(
             -0.7 * jsInputs[self._brake_idx] + 1.4) - 1.2) / 0.92
@@ -692,6 +697,7 @@ class LaneInvasionSensor(object):
             return
         lane_types = set(x.type for x in event.crossed_lane_markings)
         text = ['%r' % str(x).split()[-1] for x in lane_types]
+        print("crossed line")
         self.hud.notification('Crossed line %s' % ' and '.join(text))
 
 # ==============================================================================
@@ -793,7 +799,7 @@ class CameraManager(object):
         cv2.moveWindow("window", 1900, 0)
         cv2.resizeWindow("window", 1920, 1080)
         array = cv2.resize(array, dsize=(1080, 1080), interpolation=cv2.INTER_CUBIC)        
-        #cv2.imshow("window", array)
+        cv2.imshow("window", array)
         
         cv2.waitKey(1)
 
@@ -837,7 +843,6 @@ class CameraManager(object):
                 if (x != 0 and y != 0):
                     m = y/x
                     if(m > m1):
-                        print(m1)
                         m1 = m
                         z = (x*x)+(y*y)
                         #length = math.sqrt(z)
@@ -908,7 +913,7 @@ class CameraManager(object):
         cv2.polylines(overlayed_img,[pts],True,(0,255,255))
         cv2.fillPoly(overlayed_img, np.int_([pts]), (0, 255, 0))
         cv2.moveWindow("window2", 1900, 0)
-        cv2.imshow('window2', overlayed_img)
+        #cv2.imshow('window2', overlayed_img)
         cv2.waitKey(1)
 
 # ==============================================================================
