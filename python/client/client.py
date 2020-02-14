@@ -157,6 +157,7 @@ delay_counter = 0
 reverse = 0
 bkup = 0
 drive = 0
+drive_ctr = 201
 bkup_cam = 1
 array3 = None
 
@@ -404,13 +405,20 @@ class DualControl(object):
         K2 = 1.4  # 1.6
         throttleCmd = K2 + (2.05 * math.log10(
             -0.7 * jsInputs[self._throttle_idx] + 1.4) - 1.2) / 0.92
+        #print(throttleCmd)
         if throttleCmd <= 0:
             throttleCmd = 0
-        elif throttleCmd > 1:
-            global drive
-            drive = drive + 0.0001
-            subprocess.call("adb shell am startservice -a com.lexa.fakegps.START -e lat " + str(43.933028 + drive)  + " -e long " + str(-78.878979 - drive) ,shell=True)
-            throttleCmd = 1
+        else:
+            #global drive
+            #global drive_ctr
+            #drive_ctr +=1
+            
+            #print(drive_ctr)
+            #print(drive)
+            #if(drive_ctr > 600):
+            #    drive += 0.2
+            #    drive_ctr = 0
+            #    subprocess.call("adb shell am startservice -a com.lexa.fakegps.START -e lat " + str(43.733028 + drive)  + " -e long " + str(-78.678979 - drive) ,shell=True)
             throttleCmd = 1
         brakeCmd = 1.6 + (2.05 * math.log10(
             -0.7 * jsInputs[self._brake_idx] + 1.4) - 1.2) / 0.92
@@ -722,7 +730,7 @@ class CameraManager(object):
         world = self._parent.get_world()
         bp_library = world.get_blueprint_library()
         
-        self.backup_loc = carla.Transform(carla.Location(x=-5, z=1), carla.Rotation(yaw=200, pitch=-10))
+        self.backup_loc = carla.Transform(carla.Location(x=-5, z=1), carla.Rotation(yaw=180, pitch=-10))
 
         self.cam_backup = bp_library.find('sensor.camera.rgb')
         self.cam_backup.set_attribute('image_size_x', str(hud.dim[0]))
