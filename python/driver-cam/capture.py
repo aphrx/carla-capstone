@@ -31,6 +31,8 @@ def eye_aspect_ratio(eye):
 	# return the eye aspect ratio
 	return ear
  
+def capturePicture(frame):
+	cv2.imwrite(filename='face.jpeg', img=frame)
  
 # define two constants, one for the eye aspect ratio to indicate
 # blink and then a second constant for the number of consecutive
@@ -60,13 +62,21 @@ time.sleep(1.0)
 
 EyeCounter = 0
 
+#start timer
+oldtime= time.time()
+
 # loop over frames from the video stream
 while True:
 	# grab the frame from the threaded video file stream, resize
-	# it, and convert it to grayscale
-	# channels)
 	frame = vs.read()
 	frame = imutils.resize(frame, width=450)
+	
+	#capture image for emotion
+	if time.time() - oldtime > 59:
+		capturePicture(frame)
+		oldtime = time.time()
+		
+	#convert it to grayscale channels
 	gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
 	# detect faces in the grayscale frame
@@ -125,7 +135,7 @@ while True:
 			
 				if not ALARM_ON:
 					ALARM_ON = True
-					t = Thread(target=sound_alarm, args=("Airhorn2.mp3",))
+					t = Thread(target=sound_alarm, args=("alert.mp3",))
 					t.deamon = True
 					t.start()
 
