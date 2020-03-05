@@ -30,6 +30,7 @@ import glob
 import os
 import cv2
 import sys
+import csv
 import subprocess
 
 try:
@@ -152,6 +153,7 @@ def get_speed():
 steer = 0
 auto = 0
 speed = 0
+locationPath = 0
 indicator = 0
 delay_counter = 0
 reverse = 0
@@ -159,7 +161,11 @@ bkup = 0
 drive = 0
 drive_ctr = 201
 bkup_cam = 1
+nav = 0
 array3 = None
+
+with open('location.csv', newline='') as loclist:
+    loc = list(csv.reader(loclist))
 
 class World(object):
     def __init__(self, carla_world, hud, actor_filter):
@@ -294,12 +300,10 @@ class DualControl(object):
                 elif event.button == 5:
                     global reverse
                     if(reverse == 0):
-                        print("Reversing!")
                         subprocess.call("adb shell am start -n com.microntek.avin/.MainActivity",shell=True)
                         reverse = 1
                         self._control.gear = -1
                     else:
-                        print("Driving")
                         subprocess.call("adb shell am start -n com.microntek.navisettings/.MainActivity",shell=True)
                         reverse = 0
                         self._control.gear = 1
@@ -392,6 +396,7 @@ class DualControl(object):
         self._control.hand_brake = keys[K_SPACE]
 
     def _parse_vehicle_wheel(self):
+        global locationPath
         numAxes = self._joystick.get_numaxes()
         jsInputs = [float(self._joystick.get_axis(i)) for i in range(numAxes)]
         jsButtons = [float(self._joystick.get_button(i)) for i in
@@ -418,8 +423,17 @@ class DualControl(object):
             #if(drive_ctr > 600):
             #    drive += 0.2
             #    drive_ctr = 0
-            #    subprocess.call("adb shell am startservice -a com.lexa.fakegps.START -e lat " + str(43.733028 + drive)  + " -e long " + str(-78.678979 - drive) ,shell=True)
+            global nav
+            if((throttleCmd > 0.8)):
+                if nav > 200:
+                    locationPath += 10
+                    subprocess.call("adb shell am startservice -a com.lexa.fakegps.START -e lat " + str(loc[locationPath][0])  + " -e long " +  str(loc[locationPath][1]) ,shell=True)
+                    nav = 0
+                nav += 1
             throttleCmd = 1
+            
+            
+            
         brakeCmd = 1.6 + (2.05 * math.log10(
             -0.7 * jsInputs[self._brake_idx] + 1.4) - 1.2) / 0.92
         if brakeCmd <= 0:
@@ -705,7 +719,7 @@ class LaneInvasionSensor(object):
             return
         lane_types = set(x.type for x in event.crossed_lane_markings)
         text = ['%r' % str(x).split()[-1] for x in lane_types]
-        print("crossed line")
+        #print("crossed line")
         self.hud.notification('Crossed line %s' % ' and '.join(text))
 
 # ==============================================================================

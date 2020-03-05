@@ -10,10 +10,15 @@ import imutils
 import time
 import dlib
 import cv2
+import subprocess
 
-def sound_alarm(path):
+def sound_alarm(alarm):
 	# play an alarm sound
-	playsound.playsound(path)
+	#playsound.playsound(path)
+    if alarm == "true":
+        subprocess.call("adb shell am start -n com.example.alertapp/.MainActivity",shell=True)
+    else:
+        subprocess.call("adb shell am start -n com.microntek.navisettings/.MainActivity",shell=True)
 	
 def eye_aspect_ratio(eye):
 	# compute the euclidean distances between the two sets of
@@ -88,7 +93,7 @@ while True:
 		if (EyeCounter == 70):
 			if not ALARM_ON:
 				ALARM_ON = True
-				t = Thread(target=sound_alarm, args=("alert.mp3",))
+				t = Thread(target=sound_alarm, args=("true",))
 				#start a thread to have the alarm sound played in the background
 				t.deamon = True
 				t.start()
@@ -97,6 +102,10 @@ while True:
 				cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
 			EyeCounter = 0
 			ALARM_ON = False
+            t = Thread(target=sound_alarm, args=("false",))
+			t.deamon = True
+			t.start()
+            
 
 	# loop over the face detections
 	for rect in rects:
@@ -135,7 +144,7 @@ while True:
 			
 				if not ALARM_ON:
 					ALARM_ON = True
-					t = Thread(target=sound_alarm, args=("alert.mp3",))
+					t = Thread(target=sound_alarm, args=("true",))
 					t.deamon = True
 					t.start()
 
@@ -144,11 +153,18 @@ while True:
 					cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
 					
 				ALARM_ON = False
+                t = Thread(target=sound_alarm, args=("false",))
+				t.deamon = True
+				t.start()
 		# otherwise, the eye aspect ratio is not below the blink
 		# threshold, so reset the counter and alarm
 		else:
 			COUNTER = 0
 			ALARM_ON = False
+            t = Thread(target=sound_alarm, args=("false",))
+			t.deamon = True
+			t.start()
+            
  
 	# show the frame
 	cv2.imshow("Frame", frame)
