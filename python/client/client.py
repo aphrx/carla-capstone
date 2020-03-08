@@ -135,6 +135,20 @@ car_unsafe_zone = Cuboid(p1, p2, p3, p4, p5, p6, p7, p8)
 ser = serial.Serial('COM3', 9600)
 ser2 = serial.Serial('COM4', 9600)
 
+status = "false"
+def sound_alarm(alarm):
+    global status
+	# play an alarm sound
+	#playsound.playsound(path)
+    if alarm == "true":
+        if status == "false":
+            subprocess.call("adb shell am start -n com.example.alertapp/.MainActivity",shell=True)
+            status = "true"
+    else:
+        if status == "true":
+            subprocess.call("adb shell am start -n com.microntek.navisettings/.MainActivity",shell=True)
+            status = "false"
+
 def find_weather_presets():
     rgx = re.compile('.+?(?:(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])|$)')
     name = lambda x: ' '.join(m.group(0) for m in rgx.finditer(x))
@@ -912,10 +926,14 @@ class CameraManager(object):
             points = np.reshape(points, (int(points.shape[0] / 3), 3)) # looks like [[x,y,x],[x,y,x],[x,y,x]]
             for x in np.nditer(points, flags=['external_loop'], order='F'):
                 this = XYZPoint(x[0], x[1], x[2]) # Make point object out of the array
-                if(car_unsafe_zone.point_is_within(this)):
-                    # one point is in the unsafe zone, so warn and exit
-                    print("Warning!!")
-                    break
+                if(get_speed() != 0):
+                    if(car_unsafe_zone.point_is_within(this)):
+                        # one point is in the unsafe zone, so warn and exit
+                        print("Warning!!")
+                        sound_alarm("true")
+                        break
+                else:
+                    sound_alarm("false")
             lidar_data = np.array(points[:, :2])
             lidar_data *= min(self.hud.dim) / 100.0
             lidar_data += (0.5 * self.hud.dim[0], 0.5 * self.hud.dim[1])
