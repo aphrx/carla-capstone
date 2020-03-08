@@ -110,6 +110,23 @@ try:
 except ImportError:
     raise RuntimeError('cannot import numpy, make sure numpy package is installed')
 
+# For collision mitigation algo with LiDAR
+from ploygon_calc import Cuboid             #  ploygon_calc.py
+from ploygon_calc import XYZPoint           #  ploygon_calc.py
+
+
+# Here -y axis the front of the car
+p1 = XYZPoint(-4,-9,1.5)
+p2 = XYZPoint(4,-9,1.5)
+p3 = XYZPoint(4,-4,1.5)
+p4 = XYZPoint(-4,-4,1.5)
+p5 = XYZPoint(-4,-9,-2)
+p6 = XYZPoint(4,-9,-2)
+p7 = XYZPoint(4,-4,-2)
+p8 = XYZPoint(-4,-4,-2)
+# This is the cuboid that sits infront of the car, this same priciple
+# can be applied to place unsafe zone's any where around the car.
+car_unsafe_zone = Cuboid(p1, p2, p3, p4, p5, p6, p7, p8)
 
 # ==============================================================================
 # -- Global functions ----------------------------------------------------------
@@ -751,7 +768,8 @@ class CameraManager(object):
         self.cam_backup.set_attribute('image_size_y', str(hud.dim[1]))
         
         self.sensors = [
-            ['sensor.camera.rgb', cc.Raw, 'Camera RGB']]
+            ['sensor.camera.rgb', cc.Raw, 'Camera RGB'],
+            ['sensor.lidar.ray_cast', None, 'Lidar (Ray-Cast)']]
 
         self.sensor_bkup = world.spawn_actor(self.cam_backup, self.backup_loc, attach_to=self._parent)
         
@@ -770,6 +788,9 @@ class CameraManager(object):
         self.transform_index = (self.transform_index + 1) % len(self._camera_transforms)
         self.sensor.set_transform(self._camera_transforms[self.transform_index])
 
+    # TAB          : change sensor position
+    # `            : next sensor
+    # [1-9]        : change to sensor [1-9]
     def set_sensor(self, index, notify=True):
         index = index % len(self.sensors)
         needs_respawn = True if self.index is None \
@@ -886,57 +907,77 @@ class CameraManager(object):
         self = weak_self()
         if not self:
             return
+        if self.sensors[self.index][0].startswith('sensor.lidar'):
+            points = np.frombuffer(image.raw_data, dtype=np.dtype('f4'))
+            points = np.reshape(points, (int(points.shape[0] / 3), 3)) # looks like [[x,y,x],[x,y,x],[x,y,x]]
+            for x in np.nditer(points, flags=['external_loop'], order='F'):
+                this = XYZPoint(x[0], x[1], x[2]) # Make point object out of the array
+                if(car_unsafe_zone.point_is_within(this)):
+                    # one point is in the unsafe zone, so warn and exit
+                    print("Warning!!")
+                    break
+            lidar_data = np.array(points[:, :2])
+            lidar_data *= min(self.hud.dim) / 100.0
+            lidar_data += (0.5 * self.hud.dim[0], 0.5 * self.hud.dim[1])
+            lidar_data = np.fabs(lidar_data)  # pylint: disable=E1111
+            lidar_data = lidar_data.astype(np.int32)
+            lidar_data = np.reshape(lidar_data, (-1, 2))
+            lidar_img_size = (self.hud.dim[0], self.hud.dim[1], 3)
+            lidar_img = np.zeros(lidar_img_size) # Return a new array of given shape and type, filled with zeros
+            lidar_img[tuple(lidar_data.T)] = (255, 255, 255)
+            self.surface = pygame.surfarray.make_surface(lidar_img)
         
-        image.convert(self.sensors[0][1])
+        else:
+            image.convert(self.sensors[0][1])
+            
+            array = np.frombuffer(image.raw_data, dtype=np.dtype("uint8"))
+            array = np.reshape(array, (image.height, image.width, 4))
+            
+            array2 = array[:, :, :3]
+            array = array2[:, :, ::-1]
+            
+            self.surface = pygame.surfarray.make_surface(array.swapaxes(0, 1))
+            
+            processed_img = CameraManager.process_img(CameraManager.region_of_interest(CameraManager.process_img(CameraManager.process_img(array2))))
+            
+            lines = cv2.HoughLinesP(processed_img, 2, np.pi/180, 100, np.array([]), minLineLength=100, maxLineGap=80)
+            
+            lined_img, m1, m2 = CameraManager.display_lines(processed_img, lines)
+            
+            overlayed_img = cv2.addWeighted(cv2.cvtColor(array2, cv2.COLOR_BGR2GRAY), 0.8, lined_img, 1, 1)
+            
+            height = image.height
+            width = image.width
+            
+            a1 = (int) (0.20 * width)
+            a2 = (int) (0.82 * width)
+            b = (int) (0.76 * height)
+            
+            cv2.rectangle(overlayed_img,(a1,b),(a2,height),(0,255,0),3)
+            pts = np.array([m1, m2], np.int32)
+            pts = pts.reshape((-1,1,2))
+            avgm1 = (m1[0][0] + m1[1][0])/2
+            avgm2 = (m2[0][0] + m2[1][0])/2
+            
+            m1dif = avgm1 - (width/2)
+            m2dif = (width/2) - avgm2
+            global steer
+            if(m1dif < 100):
+                #print("Steer left!")
+                steer = -0.3
+                
+            if(m2dif < 100):
+                #print("Steer right!")
+                steer = 0.3
 
-        array = np.frombuffer(image.raw_data, dtype=np.dtype("uint8"))
-        array = np.reshape(array, (image.height, image.width, 4))
-
-        array2 = array[:, :, :3]
-        array = array2[:, :, ::-1]
-
-        self.surface = pygame.surfarray.make_surface(array.swapaxes(0, 1))
-
-        processed_img = CameraManager.process_img(CameraManager.region_of_interest(CameraManager.process_img(CameraManager.process_img(array2))))
+            if ((m1dif > 200) and (m2dif > 200)):
+                steer = 0
         
-        lines = cv2.HoughLinesP(processed_img, 2, np.pi/180, 100, np.array([]), minLineLength=100, maxLineGap=80)
-
-        lined_img, m1, m2 = CameraManager.display_lines(processed_img, lines)
-
-        overlayed_img = cv2.addWeighted(cv2.cvtColor(array2, cv2.COLOR_BGR2GRAY), 0.8, lined_img, 1, 1)
-        
-        height = image.height
-        width = image.width
-        
-        a1 = (int) (0.20 * width)
-        a2 = (int) (0.82 * width)
-        b = (int) (0.76 * height)
-        
-        cv2.rectangle(overlayed_img,(a1,b),(a2,height),(0,255,0),3)
-        pts = np.array([m1, m2], np.int32)
-        pts = pts.reshape((-1,1,2))
-        avgm1 = (m1[0][0] + m1[1][0])/2
-        avgm2 = (m2[0][0] + m2[1][0])/2
-
-        m1dif = avgm1 - (width/2)
-        m2dif = (width/2) - avgm2
-        global steer
-        if(m1dif < 100):
-            #print("Steer left!")
-            steer = -0.3
-
-        if(m2dif < 100):
-            #print("Steer right!")
-            steer = 0.3
-
-        if ((m1dif > 200) and (m2dif > 200)):
-            steer = 0
-        
-        cv2.polylines(overlayed_img,[pts],True,(0,255,255))
-        cv2.fillPoly(overlayed_img, np.int_([pts]), (0, 255, 0))
-        cv2.moveWindow("window2", 1900, 0)
-        #cv2.imshow('window2', overlayed_img)
-        cv2.waitKey(1)
+                cv2.polylines(overlayed_img,[pts],True,(0,255,255))
+                cv2.fillPoly(overlayed_img, np.int_([pts]), (0, 255, 0))
+                cv2.moveWindow("window2", 1900, 0)
+                #cv2.imshow('window2', overlayed_img)
+                cv2.waitKey(1)
 
 # ==============================================================================
 # -- game_loop() ---------------------------------------------------------------
