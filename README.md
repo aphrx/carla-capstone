@@ -9,7 +9,7 @@ This Capstone project is attempting to integrate real hardware used in cars to c
 ## Software Features
 - Lane Assist
 - Attention Detection System
-- LIDAR Collision Avoidance *[In Progress]*
+- LIDAR Collision Avoidance
 
 ## Current Integrated Hardware
 - Eonon GA2176 Headunit
