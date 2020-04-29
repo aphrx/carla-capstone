@@ -10,8 +10,11 @@ This Capstone project is attempting to integrate real hardware used in cars to c
 - Lane Assist
 - Attention Detection System
 - LIDAR Collision Avoidance
+- Emotion Logging
+- Custom Warning App
 
 ## Current Integrated Hardware
 - Eonon GA2176 Headunit
 - Thrustmaster Red Legend Steering Wheel Kit
 - BMW E36 Instrument Cluster
+- Logitech Webcam
